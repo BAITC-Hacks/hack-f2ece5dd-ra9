@@ -71,6 +71,9 @@
     for (const s of response.sessions) {
       const row = node('article','saved-recording');
       row.append(node('h3','',s.title),node('p','field-help',`${labels[s.status] || s.status} · ${time(s.duration_seconds)} · ${new Date(s.created_at).toLocaleString('ru-RU')} · ${s.chunks.length} фрагм.`));
+      const results = node('button', 'button secondary', 'Транскрипт и итоги');
+      results.addEventListener('click', () => window.openMeetingResults(s.id));
+      row.append(results);
       if (s.error) row.append(node('p','upload-error',s.error));
       if (!['starting','recording','stopping'].includes(s.status) && s.duration_seconds > 0) {
         const url = `/api/sessions/${encodeURIComponent(s.id)}/files/recording.wav`;
@@ -98,6 +101,7 @@
   el('start-recording').addEventListener('click',()=>action(async()=>{
     resetDemo();
     recording=await api('/api/recordings/start',{device_id:Number(el('audio-source').value),title:el('meeting-name').value.trim() || 'Совещание',platform:document.querySelector('input[name="platform"]:checked').value,acknowledged:el('recording-consent').checked});
+    window.openMeetingResults(recording.id);
     await sessions();
   }));
   el('stop-recording').addEventListener('click',()=>action(async()=>{

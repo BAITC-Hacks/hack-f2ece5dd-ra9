@@ -1,13 +1,15 @@
 """Local-only API and UI. Start: python -m backend --port 8765."""
 from contextlib import asynccontextmanager
 import json
+import os
 from pathlib import Path
 import re
 import secrets
+import tempfile
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -28,6 +30,10 @@ class StartRequest(BaseModel):
 
 class TeamsRequest(BaseModel):
     url: str = Field(min_length=10, max_length=4096)
+
+
+class NamesRequest(BaseModel):
+    names: dict[str, str] = Field(default_factory=dict, max_length=100)
 
 
 def create_app(data_root: Path | None = None, recorder=None, transcription=None):
@@ -68,7 +74,8 @@ def create_app(data_root: Path | None = None, recorder=None, transcription=None)
     @app.get('/api/status')
     def status():
         return {'version': '0.3.0', 'csrf_token': token, 'recording': recorder.snapshot(),
-                'speech_recognition': recognizer_available(), 'speaker_diarization': False,
+                'speech_recognition': recognizer_available(),
+                'speaker_diarization': bool(os.environ.get('DIARIZATION_MODEL_PATH')),
                 'teams_join': 'operator_managed'}
 
     @app.get('/api/devices')
@@ -97,6 +104,35 @@ def create_app(data_root: Path | None = None, recorder=None, transcription=None)
         result = recorder.stop()
         transcription.notify()
         return {'recording': result}
+
+    @app.post('/api/recordings/upload', status_code=202)
+    async def upload(request: Request, filename: str, title: str = 'Совещание'):
+        suffix = Path(filename).suffix.lower()
+        if suffix not in ('.wav', '.mp3', '.m4a', '.ogg', '.opus', '.flac', '.webm', '.mp4'):
+            raise HTTPException(422, 'Неподдерживаемый формат аудио.')
+        current = recorder.snapshot()
+        if current and current['status'] in ('starting', 'recording', 'stopping'):
+            raise HTTPException(409, 'Сначала остановите текущую запись.')
+        data_root.mkdir(parents=True, exist_ok=True)
+        path = None
+        try:
+            transcription.ensure_idle()
+            size = 0
+            with tempfile.NamedTemporaryFile(dir=data_root, suffix=suffix, delete=False) as stream:
+                path = Path(stream.name)
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > 200 * 1024 * 1024:
+                        raise HTTPException(413, 'Файл больше 200 МБ.')
+                    stream.write(chunk)
+            if not size:
+                raise HTTPException(422, 'Аудиофайл пуст.')
+            return transcription.import_audio(path, title.strip()[:100] or 'Совещание')
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from error
+        finally:
+            if path is not None:
+                path.unlink(missing_ok=True)
 
     @app.post('/api/teams/open')
     def teams(body: TeamsRequest):
@@ -149,6 +185,38 @@ def create_app(data_root: Path | None = None, recorder=None, transcription=None)
         if not path.is_file():
             raise HTTPException(404, 'Файл не найден.')
         return FileResponse(path, media_type='audio/wav', filename=filename)
+
+    def read_result(session_id):
+        path = session_path(session_id) / 'result.json'
+        if not path.is_file():
+            raise HTTPException(409, 'Итоги ещё не готовы. Дождитесь завершения распознавания.')
+        return json.loads(path.read_text(encoding='utf-8'))
+
+    @app.get('/api/sessions/{session_id}/result')
+    def result(session_id: str):
+        return read_result(session_id)
+
+    @app.post('/api/sessions/{session_id}/speakers')
+    def speaker_names(session_id: str, body: NamesRequest):
+        from ai.meeting import build_meeting
+        from .recorder import save_json
+        meeting = read_result(session_id)
+        allowed = {s.get('speaker_id', s.get('speaker')) for s in meeting['transcript']['segments']}
+        allowed.discard('speaker-unknown')
+        if any(sid not in allowed or not name.strip() or len(name) > 100 for sid, name in body.names.items()):
+            raise HTTPException(422, 'Нужны имена до 100 символов для существующих определённых говорящих.')
+        updated = build_meeting(meeting['transcript']['segments'], title=meeting['title'],
+                                speaker_names={sid: name.strip() for sid, name in body.names.items()},
+                                diarization_status=meeting['diarization_status'], warnings=meeting['warnings'])
+        save_json(session_path(session_id) / 'result.json', updated)
+        return updated
+
+    @app.get('/api/sessions/{session_id}/protocol.docx')
+    def protocol(session_id: str):
+        from ai.report import create_docx
+        return Response(create_docx(read_result(session_id)),
+                        media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                        headers={'Content-Disposition': 'attachment; filename="protocol.docx"'})
 
     app.mount('/', StaticFiles(directory=ROOT / 'ui', html=True), name='ui')
     return app

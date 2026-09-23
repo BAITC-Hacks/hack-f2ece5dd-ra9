@@ -19,7 +19,7 @@ class TranscriberTests(unittest.TestCase):
             result,
             [
                 {
-                    "speaker": "Спикер 1",
+                    "speaker": "speaker-unknown",
                     "start": 1.23,
                     "end": 4.57,
                     "text": "Проверить звук.",

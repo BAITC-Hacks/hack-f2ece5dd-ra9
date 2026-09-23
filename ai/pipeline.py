@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
 
-from ai.analyzer import analyse
+from ai.meeting import finalize_recording
 from ai.transcriber import DEFAULT_SPEAKER, transcribe_chunk
 
 
@@ -29,13 +30,8 @@ def process_recording(
         device=device,
         speaker=speaker,
     )
-    analysis = analyse({"segments": segments})
-    return {
-        "schema_version": 1,
-        "transcript": {"segments": segments},
-        "summary": analysis["summary"],
-        "tasks": analysis["tasks"],
-    }
+    return finalize_recording(audio_path, segments, title=Path(audio_path).stem,
+                              model_path=os.environ.get('DIARIZATION_MODEL_PATH'))
 
 
 def main() -> None:
@@ -44,11 +40,15 @@ def main() -> None:
     parser.add_argument("output", type=Path, help="Итоговый JSON с транскриптом, саммари и задачами")
     parser.add_argument("--model", default="base", help="Whisper-модель: base (по умолчанию) или small")
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--docx", type=Path, help="Дополнительно сохранить протокол DOCX")
     args = parser.parse_args()
 
     print(f"Обрабатываем запись: {args.input.name}")
     result = process_recording(args.input, model_size=args.model, device=args.device)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8-sig")
+    if args.docx:
+        from ai.report import create_docx
+        args.docx.write_bytes(create_docx(result))
     print(f"Готово: {len(result['transcript']['segments'])} реплик, {len(result['tasks'])} поручений.")
 
 

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-DEFAULT_SPEAKER = "Спикер 1"
+DEFAULT_SPEAKER = "speaker-unknown"
 
 
 class TranscriptionError(RuntimeError):

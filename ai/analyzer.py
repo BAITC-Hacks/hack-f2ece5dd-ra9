@@ -24,7 +24,8 @@ ACTION_RE = re.compile(
     r"жолдау|ұсыну|бекіту|подготовь|проверь|проведи|согласуй|организуй|"
     r"найди|предоставь|зафиксируй|доложи|обнови|разберись|запроси|направь|"
     r"выставь|привлеки|дайында\w*|жаса\w*|өткіз\w*|тексер\w*|келіс\w*|"
-    r"ұсын\w*|бекіт\w*|орында\w*|жібер\w*)\b",
+    r"ұсын\w*|бекіт\w*|орында\w*|жібер\w*|представить|представь|"
+    r"сделаю|подготовлю|проведу|проверю|организую|свяжитесь|проведите|проверьте)\b",
     re.IGNORECASE,
 )
 DEADLINE_RE = re.compile(
@@ -56,6 +57,7 @@ ACK_RE = re.compile(
 )
 ORDINAL_LABELS = {"первое", "второе", "третье", "четвертое", "пятое"}
 MONTH_RE = r"(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)"
+UNKNOWN_SPEAKERS = {"speaker-unknown", "Не определён", "Спикер не определён", "Говорящий не определён"}
 
 
 @dataclass
@@ -86,7 +88,7 @@ def _read_segments(payload: dict[str, Any] | list[dict[str, Any]]) -> list[Segme
         if text:
             segments.append(
                 Segment(
-                    speaker=str(item.get("speaker", "Спикер не определён")),
+                    speaker=str(item.get("speaker", item.get("speaker_id")) or "Спикер не определён"),
                     text=text,
                     start=float(item.get("start", 0)),
                     end=float(item.get("end", 0)),
@@ -100,40 +102,34 @@ def _sentences(text: str) -> list[str]:
 
 
 def _merge_adjacent_segments(segments: list[Segment]) -> list[Segment]:
-    """Join short consecutive STT fragments into complete utterances.
-
-    Whisper emits an audio segment every few seconds and can split one spoken
-    assignment in the middle.  The merge is conservative: it only joins the
-    same speaker when the audio has no meaningful gap.
-    """
+    """Rebuild sentences while preserving the bounds of their source segments."""
     if not segments:
         return []
-
-    def needs_continuation(text: str) -> bool:
-        stripped = text.strip()
-        if stripped.lower().strip(". ") in ORDINAL_LABELS:
-            return True
-        if re.search(r"\b\d{1,2}\.$", stripped):
-            return True
-        return not bool(re.search(r"[.!?]$", stripped))
-
-    merged: list[Segment] = []
-    current = Segment(**vars(segments[0]))
+    blocks = [[segments[0]]]
     for candidate in segments[1:]:
-        gap = candidate.start - current.end
-        if candidate.speaker == current.speaker and gap <= 1.5 and needs_continuation(current.text):
-            current.text = f"{current.text} {candidate.text}"
-            current.end = max(current.end, candidate.end)
-            continue
-        merged.append(current)
-        current = Segment(**vars(candidate))
-    merged.append(current)
-
-    for segment in merged:
-        # A chunk may end after a day number ("30."), while the next one
-        # starts with a month.  It is one date, not two sentences.
-        segment.text = re.sub(rf"(\d{{1,2}})\.\s+(?={MONTH_RE}\b)", r"\1 ", segment.text, flags=re.IGNORECASE)
-    return merged
+        previous = blocks[-1][-1]
+        if candidate.speaker == previous.speaker and -1.5 <= candidate.start - previous.end <= 1.5:
+            blocks[-1].append(candidate)
+        else:
+            blocks.append([candidate])
+    rebuilt = []
+    for block in blocks:
+        spans, offset = [], 0
+        for source in block:
+            spans.append((offset, offset + len(source.text), source))
+            offset += len(source.text) + 1
+        text = ' '.join(source.text for source in block)
+        # Replace only the dot so character offsets still identify source audio.
+        text = re.sub(rf'(?<=\d)\.(?=\s+{MONTH_RE}\b)', ' ', text, flags=re.IGNORECASE)
+        begin = 0
+        boundaries = [(m.start(), m.end()) for m in re.finditer(r'(?<=[.!?])\s+', text)] + [(len(text), len(text))]
+        for end, next_begin in boundaries:
+            quote = text[begin:end].strip()
+            sources = [source for a, b, source in spans if a < end and b > begin]
+            if quote and sources:
+                rebuilt.append(Segment(block[0].speaker, quote, min(s.start for s in sources), max(s.end for s in sources)))
+            begin = next_begin
+    return rebuilt
 
 
 def _timecode(seconds: float) -> str:
@@ -157,7 +153,7 @@ def _extract_owner(sentence: str, previous_address: str | None, speaker: str) ->
     if addressed_name:
         return addressed_name, addressed_name
     if SELF_COMMITMENT_RE.search(sentence):
-        return speaker, None
+        return (None if speaker in UNKNOWN_SPEAKERS else speaker), None
     # Do not carry an old addressee into a new task. Missing data must remain
     # missing and be marked for review instead of becoming a wrong assignee.
     return None, None
@@ -198,21 +194,25 @@ def extract_action_items(payload: dict[str, Any] | list[dict[str, Any]]) -> list
     manual review. The function never invents a deadline or a responsible.
     """
     tasks: list[ActionItem] = []
-    seen: set[str] = set()
+    seen: set[tuple[str, str | None, str | None]] = set()
     last_addressed: str | None = None
 
     for segment in _merge_adjacent_segments(_read_segments(payload)):
         for sentence in _sentences(segment.text):
             owner, last_addressed = _extract_owner(sentence, last_addressed, segment.speaker)
-            if not ACTION_RE.search(sentence):
+            if not ACTION_RE.search(sentence) or ACK_RE.fullmatch(sentence):
+                continue
+            # A negated instruction is not an assignment to perform the action.
+            action = ACTION_RE.search(sentence)
+            if re.search(r"\bне\s+(?:нужно\s+|надо\s+)?$", sentence[:action.start()], re.IGNORECASE):
                 continue
             deadline_match = DEADLINE_RE.search(sentence)
             title = _clean_title(sentence)
-            fingerprint = re.sub(r"[^\w]+", "", title.lower())
+            deadline = ' '.join(deadline_match.group(0).split()) if deadline_match else None
+            fingerprint = (re.sub(r"[^\w]+", "", title.lower()), owner, deadline)
             if not title or fingerprint in seen:
                 continue
             seen.add(fingerprint)
-            deadline = deadline_match.group(0) if deadline_match else None
             tasks.append(
                 ActionItem(
                     id=f"task-{len(tasks) + 1}",
@@ -225,26 +225,19 @@ def extract_action_items(payload: dict[str, Any] | list[dict[str, Any]]) -> list
                         "end": _timecode(segment.end),
                         "quote": sentence,
                     },
-                    requires_review=owner is None or deadline is None,
+                    requires_review=owner is None or deadline is None or bool(re.search(r'предлагаю|может|\?', sentence, re.IGNORECASE)),
                 )
             )
     return tasks
 
 
 def build_summary(payload: dict[str, Any] | list[dict[str, Any]], tasks: list[ActionItem]) -> dict[str, Any]:
+    """Evidence-based extractive summary; no generated facts or cloud calls."""
+    from ai.summary import summarize
     segments = _read_segments(payload)
-    discussion = [
-        segment.text
-        for segment in segments
-        if not ACTION_RE.search(segment.text) and not ACK_RE.match(segment.text)
-    ]
-    key_points = discussion[:3]
-    if not key_points:
-        key_points = [task.title for task in tasks[:3]]
-    text = f"Распознано реплик: {len(segments)}. Выделено поручений: {len(tasks)}."
-    if any(task.requires_review for task in tasks):
-        text += " Часть поручений требует проверки: не указан срок или ответственный."
-    return {"text": text, "key_points": key_points}
+    result = summarize(_merge_adjacent_segments(segments), tasks)
+    result['segment_count'] = len(segments)
+    return result
 
 
 def analyse(payload: dict[str, Any] | list[dict[str, Any]]) -> dict[str, Any]:

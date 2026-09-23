@@ -125,6 +125,12 @@ function renderSummary() {
 }
 
 function updateControls() {
+  if (window.realSessionId) {
+    $("start-demo").disabled = true;
+    $("stop-demo").disabled = true;
+    $("reset-demo").disabled = Boolean(window.recordingBusy);
+    return;
+  }
   $("start-demo").disabled = state.running || state.entries.length > 0 || Boolean(uploadedAudio) || Boolean(window.recordingBusy);
   $("start-demo").title = uploadedAudio ? "Уберите загруженный файл, чтобы запустить вымышленный пример" : "Показать вымышленные реплики и поручения";
   $("stop-demo").disabled = !state.running;
@@ -163,6 +169,8 @@ function stopDemo() {
 }
 
 function resetDemo() {
+  window.realSessionId = null;
+  if ($("download-docx")) $("download-docx").disabled = true;
   clearInterval(interval);
   state = { running: false, entries: [], tasks: [], names: { ...initialNames } };
   $("timer").textContent = "00:00";
@@ -247,7 +255,7 @@ $("audio-file").addEventListener("change", (event) => {
   uploadedAudioUrl = URL.createObjectURL(file);
   $("upload-name").textContent = file.name;
   $("upload-info").textContent = `${(file.size / 1024 / 1024).toFixed(1)} МБ · определяем длительность`;
-  $("upload-status").textContent = "Файл выбран · только прослушивание";
+  $("upload-status").textContent = "Файл выбран · готов к распознаванию";
   $("upload-details").hidden = false;
   $("audio-preview").src = uploadedAudioUrl;
   updateControls();

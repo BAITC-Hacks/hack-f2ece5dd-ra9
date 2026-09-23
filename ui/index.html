@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
   <script src="recording.js" defer></script>
+  <script src="results.js" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -72,7 +73,7 @@
             <button class="button secondary" id="transcribe-file" disabled aria-describedby="upload-hint">Распознать запись</button>
             <button class="text-button upload-clear" id="clear-file">Убрать файл</button>
           </div>
-          <p class="upload-hint" id="upload-hint">MP3, WAV, M4A, OGG, FLAC, WebM · до 200 МБ. Файл открывается локально для прослушивания; отправка выбранного файла на распознавание ещё не подключена. Чтобы вернуться к вымышленному примеру, уберите файл.</p>
+          <p class="upload-hint" id="upload-hint">До 200 МБ. Распознавание и формирование итогов выполняются на этом компьютере.</p>
         </section>
         <section class="card speakers-card" aria-labelledby="speakers-heading">
           <div class="section-heading"><h2 id="speakers-heading">Участники</h2><span class="count" id="speaker-count">0</span></div>
@@ -92,7 +93,7 @@
           <div class="transcript-body" id="transcript" role="log" aria-label="Реплики совещания" aria-live="polite" aria-relevant="additions">
             <div class="empty-state"><div class="wave-symbol" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h3>Здесь начнётся разговор</h3><p>Запустите пример, чтобы увидеть реплики участников<br class="desktop-break"> и связанные с ними поручения.</p><span class="language-label">РУССКИЙ · ҚАЗАҚША · СМЕШАННАЯ РЕЧЬ</span></div>
           </div>
-          <div class="transcript-footer"><span><span class="tiny-dot"></span> <span id="transcript-count">0 реплик</span></span><span>Таймкоды относятся к примеру</span></div>
+          <div class="transcript-footer"><span><span class="tiny-dot"></span> <span id="transcript-count">0 реплик</span></span><span>Время от начала записи</span></div>
         </section>
 
         <section class="card tasks-card" aria-labelledby="tasks-heading">
@@ -109,8 +110,8 @@
           <div class="summary-divider"></div>
           <h3 class="export-heading">Результаты встречи</h3>
           <button class="button secondary export-button" id="download-json" disabled><span>↓</span> Скачать итоги JSON</button>
-          <button class="button secondary export-button" disabled aria-describedby="docx-help"><span>↓</span> Протокол DOCX</button>
-          <p class="field-help" id="docx-help">DOCX появится после подключения генерации документов.</p>
+          <button class="button secondary export-button" id="download-docx" disabled aria-describedby="docx-help"><span>↓</span> Протокол DOCX</button>
+          <p class="field-help" id="docx-help">Документ доступен после завершения обработки записи.</p>
         </section>
         <section class="next-step"><span class="eyebrow">ПРОВЕРЬТЕ ПЕРЕД ЭКСПОРТОМ</span><p>Имена и сроки имеют значение.</p><span>Если ответственный или срок не названы, оставляем «не указан».</span></section>
       </aside>

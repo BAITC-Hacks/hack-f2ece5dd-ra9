@@ -80,6 +80,10 @@ class TranscriptionTests(unittest.TestCase):
         self.assertTrue(all(segment['is_final'] for segment in result['segments']))
         self.assertTrue(recognizer.closed)
         self.assertIn('Реплика 3', (self.directory / 'transcript.txt').read_text(encoding='utf-8'))
+        final = json.loads((self.directory / 'result.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(final['transcript']['segments']), 3)
+        self.assertIn('summary', final)
+        self.assertIn('tasks', final)
 
     def test_local_timestamps_from_later_chunk_are_rejected(self):
         files = AudioFiles(self.directory, rate=100, channels=1)

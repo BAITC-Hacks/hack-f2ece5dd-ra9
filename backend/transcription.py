@@ -5,9 +5,11 @@ from datetime import datetime, timezone
 import importlib
 import json
 import math
+import os
 from pathlib import Path
 import re
 import threading
+import uuid
 from typing import Callable
 
 from .recorder import save_json
@@ -82,7 +84,7 @@ class TranscriptManager:
         for path in root.glob('*/transcript.json'):
             try:
                 state = json.loads(path.read_text(encoding='utf-8'))
-                if state.get('status') in ('waiting', 'processing'):
+                if state.get('status') in ('waiting', 'processing', 'finalizing'):
                     state['status'] = 'interrupted'
                     state['error'] = 'Сервер был перезапущен до завершения распознавания.'
                     state['updated_at'] = _now()
@@ -128,6 +130,51 @@ class TranscriptManager:
         with self.lock:
             if any(worker.is_alive() for worker in self.threads.values()):
                 raise ValueError('Дождитесь завершения распознавания предыдущей встречи.')
+
+    def import_audio(self, source: Path, title: str):
+        """Decode an uploaded file locally, then use the same finalization path."""
+        session_id = uuid.uuid4().hex
+        directory = self.root / session_id
+        with self.lock:
+            self.ensure_idle()
+            directory.mkdir(parents=True)
+            saved_source = directory / ('source' + source.suffix)
+            source.replace(saved_source)
+            self._save(session_id, {**_initial_state(session_id), 'status': 'processing'})
+            metadata = {'schema_version': 1, 'id': session_id, 'title': title, 'platform': 'Local',
+                        'source': 'upload', 'status': 'processing', 'duration_seconds': 0,
+                        'created_at': _now(), 'chunks': []}
+            save_json(directory / 'session.json', metadata)
+
+            def process():
+                try:
+                    import wave
+                    import numpy as np
+                    from faster_whisper.audio import decode_audio
+                    samples = decode_audio(str(saved_source), sampling_rate=16000)
+                    if not len(samples):
+                        raise ValueError('В файле нет аудио.')
+                    if len(samples) > 16000 * 7200:
+                        raise ValueError('Запись длиннее двух часов.')
+                    with wave.open(str(directory / 'recording.wav'), 'wb') as audio:
+                        audio.setnchannels(1)
+                        audio.setsampwidth(2)
+                        audio.setframerate(16000)
+                        audio.writeframes((np.clip(samples, -1, 1) * 32767).astype('<i2').tobytes())
+                    duration = len(samples) / 16000
+                    metadata.update(status='completed', duration_seconds=duration,
+                                    chunks=[{'index': 0, 'file': 'recording.wav', 'start': 0, 'duration': duration}])
+                    save_json(directory / 'session.json', metadata)
+                    self._run(session_id)
+                except Exception as error:
+                    metadata.update(status='error', error=str(error))
+                    save_json(directory / 'session.json', metadata)
+                    with self.lock:
+                        self._save(session_id, {**_initial_state(session_id), 'status': 'error', 'error': str(error)})
+            worker = threading.Thread(target=process, daemon=True, name=f'import-{session_id[:8]}')
+            self.threads[session_id] = worker
+            worker.start()
+        return metadata
 
     def notify(self):
         self.wake.set()
@@ -182,6 +229,16 @@ class TranscriptManager:
                         self._publish_text(session_id, state['segments'])
                     processed += 1
                 if metadata.get('status') in TERMINAL_RECORDING_STATES and processed == len(chunks):
+                    if metadata['status'] == 'completed':
+                        from ai.meeting import finalize_recording
+                        with self.lock:
+                            state['status'] = 'finalizing'
+                            self._save(session_id, state)
+                        result = finalize_recording(
+                            self.root / session_id / 'recording.wav', state['segments'],
+                            title=metadata.get('title', 'Совещание'),
+                            model_path=os.environ.get('DIARIZATION_MODEL_PATH'))
+                        save_json(self.root / session_id / 'result.json', result)
                     with self.lock:
                         state['status'] = 'completed' if metadata['status'] == 'completed' else metadata['status']
                         self._save(session_id, state)
