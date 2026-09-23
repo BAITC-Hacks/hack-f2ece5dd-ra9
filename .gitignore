@@ -22,6 +22,8 @@ recordings/
 models/
 work/
 *.log
+/transcript.json
+/result.json
 
 # OS files
 Thumbs.db

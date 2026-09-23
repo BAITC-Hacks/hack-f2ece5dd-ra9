@@ -78,6 +78,68 @@ class AnalyzerTests(unittest.TestCase):
         self.assertEqual(task["responsible"], "Алия")
         self.assertEqual(task["deadline"], "до завтра")
 
+    def test_merges_split_assignment_before_extracting_fields(self) -> None:
+        result = analyse(
+            {
+                "segments": [
+                    {"speaker": "Спикер 1", "start": 10, "end": 12, "text": "Первое, разработать"},
+                    {
+                        "speaker": "Спикер 1",
+                        "start": 12,
+                        "end": 17,
+                        "text": "стратегию закупа сырья, ответственной Гульмира Сериковна, срок до 15 октября.",
+                    },
+                ]
+            }
+        )
+        self.assertEqual(len(result["tasks"]), 1)
+        task = result["tasks"][0]
+        self.assertEqual(task["title"], "разработать стратегию закупа сырья")
+        self.assertEqual(task["responsible"], "Гульмира Сериковна")
+        self.assertEqual(task["deadline"], "до 15 октября")
+        self.assertEqual(task["evidence"]["start"], "00:10")
+        self.assertEqual(task["evidence"]["end"], "00:17")
+
+    def test_does_not_copy_old_addressee_to_next_task(self) -> None:
+        result = analyse(
+            {
+                "segments": [
+                    {"speaker": "Спикер 1", "start": 0, "end": 2, "text": "Гульмира, проверь отчёт."},
+                    {"speaker": "Спикер 1", "start": 10, "end": 12, "text": "Подготовить инструкцию."},
+                ]
+            }
+        )
+        self.assertEqual(result["tasks"][1]["responsible"], None)
+        self.assertTrue(result["tasks"][1]["requires_review"])
+
+    def test_stops_owner_name_before_deadline_label(self) -> None:
+        result = analyse(
+            {
+                "segments": [
+                    {
+                        "speaker": "Спикер 1",
+                        "text": "Подготовить финансовое решение, ответственный Тимур Баллатович срок до 30 сентября.",
+                    }
+                ]
+            }
+        )
+        self.assertEqual(result["tasks"][0]["responsible"], "Тимур Баллатович")
+
+    def test_detects_department_without_explicit_owner_word(self) -> None:
+        result = analyse(
+            {
+                "segments": [
+                    {
+                        "speaker": "Спикер 1",
+                        "text": "Провести юридическую проверку, юридический департамент, срок до 30 сентября.",
+                    }
+                ]
+            }
+        )
+        task = result["tasks"][0]
+        self.assertEqual(task["responsible"], "юридический департамент")
+        self.assertEqual(task["title"], "Провести юридическую проверку")
+
 
 if __name__ == "__main__":
     unittest.main()
