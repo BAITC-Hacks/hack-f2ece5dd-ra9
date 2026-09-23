@@ -68,7 +68,8 @@ def create_app(data_root: Path | None = None, recorder=None, transcription=None)
     @app.get('/api/status')
     def status():
         return {'version': '0.3.0', 'csrf_token': token, 'recording': recorder.snapshot(),
-                'speech_recognition': recognizer_available(), 'teams_join': 'operator_managed'}
+                'speech_recognition': recognizer_available(), 'speaker_diarization': False,
+                'teams_join': 'operator_managed'}
 
     @app.get('/api/devices')
     def devices():

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -20,6 +21,7 @@ class TranscriptionError(RuntimeError):
     """Raised when the local speech recognition runtime is unavailable."""
 
 
+@lru_cache(maxsize=1)
 def _load_whisper_model(model_size: str, device: str) -> Any:
     """Load the selected Whisper model only when transcription is requested."""
     try:
@@ -31,7 +33,8 @@ def _load_whisper_model(model_size: str, device: str) -> Any:
 
     compute_type = "float16" if device == "cuda" else "int8"
     try:
-        return WhisperModel(model_size, device=device, compute_type=compute_type)
+        return WhisperModel(model_size, device=device, compute_type=compute_type,
+                            download_root=str(Path(__file__).resolve().parent.parent / 'models'))
     except Exception as error:  # Library errors depend on CUDA and model download state.
         hint = "Проверьте CUDA-драйвер" if device == "cuda" else "Проверьте интернет и свободное место для модели"
         raise TranscriptionError(f"Не удалось загрузить модель Whisper ({hint}): {error}") from error

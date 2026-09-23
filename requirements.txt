@@ -1,3 +1,4 @@
 fastapi==0.135.1
 uvicorn==0.41.0
 PyAudioWPatch==0.2.12.8; sys_platform == "win32"
+-r ai/requirements.txt

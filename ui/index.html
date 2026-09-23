@@ -25,7 +25,7 @@
       <span class="version">ЗАПИСЬ 02</span>
     </div>
 
-    <div class="demo-notice"><span class="notice-icon" aria-hidden="true">i</span><p><strong>Записываем звук встречи в WAV.</strong> В Teams входите гостем и дождитесь допуска. Распознавание речи и саммари ещё не подключены.</p></div>
+    <div class="demo-notice"><span class="notice-icon" aria-hidden="true">i</span><p><strong>Записываем и распознаём звук локально.</strong> В Teams входите гостем и дождитесь допуска. Живой текст в этом интерфейсе и разделение голосов ещё не подключены.</p></div>
 
     <div class="dashboard">
       <aside class="sidebar">
@@ -68,11 +68,11 @@
           <div id="upload-details" hidden>
             <p class="upload-meta"><span class="upload-name" id="upload-name"></span><span id="upload-info"></span></p>
             <audio id="audio-preview" class="audio-player" controls preload="metadata" aria-label="Прослушать загруженную запись"></audio>
-            <span class="tag pending" id="upload-status" role="status">Модель не подключена</span>
+            <span class="tag pending" id="upload-status" role="status">Только прослушивание</span>
             <button class="button secondary" id="transcribe-file" disabled aria-describedby="upload-hint">Распознать запись</button>
             <button class="text-button upload-clear" id="clear-file">Убрать файл</button>
           </div>
-          <p class="upload-hint" id="upload-hint">MP3, WAV, M4A, OGG, FLAC, WebM · до 200 МБ. Файл открывается локально. Распознавание появится после подключения модели. Чтобы вернуться к вымышленному примеру, уберите файл.</p>
+          <p class="upload-hint" id="upload-hint">MP3, WAV, M4A, OGG, FLAC, WebM · до 200 МБ. Файл открывается локально для прослушивания; отправка выбранного файла на распознавание ещё не подключена. Чтобы вернуться к вымышленному примеру, уберите файл.</p>
         </section>
         <section class="card speakers-card" aria-labelledby="speakers-heading">
           <div class="section-heading"><h2 id="speakers-heading">Участники</h2><span class="count" id="speaker-count">0</span></div>

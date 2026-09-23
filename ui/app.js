@@ -247,7 +247,7 @@ $("audio-file").addEventListener("change", (event) => {
   uploadedAudioUrl = URL.createObjectURL(file);
   $("upload-name").textContent = file.name;
   $("upload-info").textContent = `${(file.size / 1024 / 1024).toFixed(1)} МБ · определяем длительность`;
-  $("upload-status").textContent = "Файл выбран · модель не подключена";
+  $("upload-status").textContent = "Файл выбран · только прослушивание";
   $("upload-details").hidden = false;
   $("audio-preview").src = uploadedAudioUrl;
   updateControls();

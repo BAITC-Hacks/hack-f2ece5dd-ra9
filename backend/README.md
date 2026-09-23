@@ -1,6 +1,6 @@
 # Backend записи совещаний
 
-Backend на FastAPI записывает системный звук Windows через WASAPI loopback и подаёт готовые WAV-фрагменты в подключаемый модуль распознавания. Модуль Жана пока не добавлен, поэтому реальный текст не появляется. Контракт подключения и API для UI описаны в [TRANSCRIPTION_CONTRACT.md](TRANSCRIPTION_CONTRACT.md). Запуск: `python -m backend`, по умолчанию `http://127.0.0.1:8765`. Используйте Python из `.venv`; зависимости устанавливает `setup.cmd`.
+Backend на FastAPI записывает системный звук Windows через WASAPI loopback и подаёт готовые WAV-фрагменты в модуль Жана `ai/transcriber.py` через адаптер `speech/recognizer.py`. Локальная модель faster-whisper base/CPU возвращает текст; диаризация пока отсутствует, говорящие помечены как неопределённые. Контракт подключения и API для UI описаны в [TRANSCRIPTION_CONTRACT.md](TRANSCRIPTION_CONTRACT.md). Запуск: `python -m backend`, по умолчанию `http://127.0.0.1:8765`. Используйте Python из `.venv`; зависимости устанавливает `setup.cmd`.
 
 ## Teams
 
