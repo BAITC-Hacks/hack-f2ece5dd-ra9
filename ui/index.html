@@ -7,6 +7,7 @@
   <title>AI Протоколист · rA9</title>
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
+  <script src="recording.js" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -21,10 +22,10 @@
   <main class="workspace">
     <div class="page-heading">
       <div><p class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</p><h1>Каждое поручение на месте.</h1><p class="subtitle">Реплики, решения и следующие шаги — в одном окне.</p></div>
-      <span class="version">ПРОТОТИП 01</span>
+      <span class="version">ЗАПИСЬ 02</span>
     </div>
 
-    <div class="demo-notice"><span class="notice-icon" aria-hidden="true">i</span><p><strong>Сейчас открыт прототип интерфейса.</strong> Пример содержит вымышленные реплики. Запись звука и ИИ ещё не подключены.</p></div>
+    <div class="demo-notice"><span class="notice-icon" aria-hidden="true">i</span><p><strong>Записываем звук встречи в WAV.</strong> В Teams входите гостем и дождитесь допуска. Распознавание речи и саммари ещё не подключены.</p></div>
 
     <div class="dashboard">
       <aside class="sidebar">
@@ -33,14 +34,30 @@
           <label class="field-label" for="meeting-name">Название</label>
           <input id="meeting-name" maxlength="100" value="Планирование проекта" autocomplete="off">
           <fieldset class="platform-field"><legend class="field-label">Платформа встречи</legend><div class="platform-options"><label><input type="radio" name="platform" value="Teams" checked><span>Teams</span></label><label><input type="radio" name="platform" value="Zoom"><span>Zoom</span></label></div></fieldset>
-          <p class="platform-help" id="platform-help">Сценарий Teams. Подключение и захват звука пока недоступны.</p>
+          <p class="platform-help" id="platform-help">Teams: откройте встречу гостем, затем включите запись.</p>
+          <div id="teams-controls">
+            <label class="field-label" for="meeting-url">Ссылка на встречу Teams</label>
+            <input id="meeting-url" type="url" placeholder="https://teams.microsoft.com/meet/…" autocomplete="off">
+            <button class="button secondary" id="open-teams" disabled>Открыть Teams гостем ↗</button>
+            <p id="teams-status" class="field-help" role="status">Гостевой вход завершите в окне браузера. Укажите имя AI Протоколист, выключите микрофон и камеру.</p>
+          </div>
           <label class="field-label" for="audio-source">Источник звука</label>
-          <select id="audio-source" disabled aria-describedby="source-help"><option>Системный звук Windows</option></select>
-          <p class="field-help" id="source-help">Выбор устройства появится после подключения записи.</p>
+          <select id="audio-source" disabled aria-describedby="source-help"><option value="">Загружаем устройства…</option></select>
+          <button class="text-button" id="refresh-devices">Обновить устройства</button>
+          <p class="field-help" id="source-help">Выберите те же динамики или наушники, что и в Teams. Записываются все звуки этого устройства, без локального микрофона.</p>
+          <label class="consent-label"><input type="checkbox" id="recording-consent">Источник звука готов. Участники уведомлены о записи.</label>
+          <div class="recording-display"><span class="status"><span class="status-dot" id="live-dot"></span><span id="live-status">Подключаем backend…</span></span><strong id="live-timer">00:00</strong></div>
+          <meter id="audio-level" min="0" max="1" value="0" aria-label="Уровень записываемого звука"></meter>
+          <p class="field-help" id="live-details">WAV · фрагменты по 5 секунд</p>
+          <button class="button primary" id="start-recording" disabled>● Начать запись</button>
+          <button class="button secondary" id="stop-recording" disabled>■ Остановить и сохранить</button>
+          <p id="backend-error" class="upload-error" role="alert" hidden></p>
+          <details class="demo-details"><summary>Посмотреть вымышленный пример</summary>
           <div class="recording-display"><span class="status"><span class="status-dot" id="status-dot"></span><span id="session-status">Ожидает запуска</span></span><strong id="timer">00:00</strong></div>
           <button class="button primary" id="start-demo"><span aria-hidden="true">▶</span> Запустить пример</button>
           <button class="button secondary" id="stop-demo" disabled>Завершить пример</button>
           <button class="text-button" id="reset-demo" disabled>Очистить результаты</button>
+          </details>
         </section>
 
         <section class="card upload-card" aria-labelledby="upload-heading">
@@ -62,10 +79,14 @@
           <p class="field-help">Назначьте имена, чтобы связать реплики и поручения.</p>
           <div id="speakers"><p class="muted-empty">Здесь появятся говорящие.</p></div>
         </section>
-        <div class="privacy-note"><span aria-hidden="true">◇</span><p>В этой версии данные примера остаются в браузере и сбрасываются при перезагрузке.</p></div>
+        <div class="privacy-note"><span aria-hidden="true">◇</span><p>Записи хранятся локально в папке sessions. Аудио не отправляется в сервисы ИИ.</p></div>
       </aside>
 
       <div class="main-column">
+        <section class="card recordings-card" aria-labelledby="recordings-heading">
+          <div class="panel-heading"><div><h2 id="recordings-heading">Сохранённые записи</h2><p>Реальное аудио для следующего этапа обработки</p></div><button class="icon-button" id="refresh-sessions" aria-label="Обновить список записей">↻</button></div>
+          <div id="recordings-list"><p class="recordings-empty">Пока нет записей. Подключитесь к встрече и нажмите «Начать запись».</p></div>
+        </section>
         <section class="card transcript-card" aria-labelledby="transcript-heading">
           <div class="panel-heading"><div><div class="title-with-badge"><h2 id="transcript-heading">Транскрипт</h2><span class="tag neutral" id="transcript-tag">Нет данных</span></div><p>Ход разговора, реплика за репликой</p></div><button class="icon-button" id="download-transcript" disabled title="Скачать транскрипт TXT" aria-label="Скачать транскрипт TXT">↓ <span>TXT</span></button></div>
           <div class="transcript-body" id="transcript" role="log" aria-label="Реплики совещания" aria-live="polite" aria-relevant="additions">

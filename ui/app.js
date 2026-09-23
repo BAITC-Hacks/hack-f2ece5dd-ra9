@@ -125,7 +125,7 @@ function renderSummary() {
 }
 
 function updateControls() {
-  $("start-demo").disabled = state.running || state.entries.length > 0 || Boolean(uploadedAudio);
+  $("start-demo").disabled = state.running || state.entries.length > 0 || Boolean(uploadedAudio) || Boolean(window.recordingBusy);
   $("start-demo").title = uploadedAudio ? "Уберите загруженный файл, чтобы запустить вымышленный пример" : "Показать вымышленные реплики и поручения";
   $("stop-demo").disabled = !state.running;
   $("reset-demo").disabled = !state.entries.length && !state.running;
@@ -194,7 +194,7 @@ $("stop-demo").addEventListener("click", stopDemo);
 $("reset-demo").addEventListener("click", resetDemo);
 document.querySelectorAll('input[name="platform"]').forEach((input) => {
   input.addEventListener("change", () => {
-    $("platform-help").textContent = `Сценарий ${input.value}. Подключение и захват звука пока недоступны.`;
+    $("platform-help").textContent = input.value === 'Teams' ? 'Teams: откройте встречу гостем, затем включите запись.' : 'Zoom: войдите во встречу вручную, затем включите запись системного звука.';
   });
 });
 $("download-transcript").addEventListener("click", () => {
