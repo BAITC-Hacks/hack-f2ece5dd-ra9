@@ -125,7 +125,13 @@ function renderSummary() {
 }
 
 function updateControls() {
-  $("start-demo").disabled = state.running || state.entries.length > 0 || Boolean(uploadedAudio);
+  if (window.realSessionId) {
+    $("start-demo").disabled = true;
+    $("stop-demo").disabled = true;
+    $("reset-demo").disabled = Boolean(window.recordingBusy);
+    return;
+  }
+  $("start-demo").disabled = state.running || state.entries.length > 0 || Boolean(uploadedAudio) || Boolean(window.recordingBusy);
   $("start-demo").title = uploadedAudio ? "Уберите загруженный файл, чтобы запустить вымышленный пример" : "Показать вымышленные реплики и поручения";
   $("stop-demo").disabled = !state.running;
   $("reset-demo").disabled = !state.entries.length && !state.running;
@@ -163,6 +169,8 @@ function stopDemo() {
 }
 
 function resetDemo() {
+  window.realSessionId = null;
+  if ($("download-docx")) $("download-docx").disabled = true;
   clearInterval(interval);
   state = { running: false, entries: [], tasks: [], names: { ...initialNames } };
   $("timer").textContent = "00:00";
@@ -194,7 +202,7 @@ $("stop-demo").addEventListener("click", stopDemo);
 $("reset-demo").addEventListener("click", resetDemo);
 document.querySelectorAll('input[name="platform"]').forEach((input) => {
   input.addEventListener("change", () => {
-    $("platform-help").textContent = `Сценарий ${input.value}. Подключение и захват звука пока недоступны.`;
+    $("platform-help").textContent = input.value === 'Teams' ? 'Teams: откройте встречу гостем, затем включите запись.' : 'Zoom: войдите во встречу вручную, затем включите запись системного звука.';
   });
 });
 $("download-transcript").addEventListener("click", () => {
@@ -247,7 +255,7 @@ $("audio-file").addEventListener("change", (event) => {
   uploadedAudioUrl = URL.createObjectURL(file);
   $("upload-name").textContent = file.name;
   $("upload-info").textContent = `${(file.size / 1024 / 1024).toFixed(1)} МБ · определяем длительность`;
-  $("upload-status").textContent = "Файл выбран · модель не подключена";
+  $("upload-status").textContent = "Файл выбран · готов к распознаванию";
   $("upload-details").hidden = false;
   $("audio-preview").src = uploadedAudioUrl;
   updateControls();

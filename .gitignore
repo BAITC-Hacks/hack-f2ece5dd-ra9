@@ -22,6 +22,10 @@ recordings/
 models/
 work/
 *.log
+/transcript.json
+/result.json
+/meeting-result.json
+/meeting-result.docx
 
 # OS files
 Thumbs.db
