@@ -6,7 +6,7 @@ import re
 import secrets
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -14,6 +14,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .recorder import Recorder, list_devices
 from .teams import open_guest_window
+from .transcription import TranscriptManager, recognizer_available
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -29,9 +30,10 @@ class TeamsRequest(BaseModel):
     url: str = Field(min_length=10, max_length=4096)
 
 
-def create_app(data_root: Path | None = None, recorder=None):
+def create_app(data_root: Path | None = None, recorder=None, transcription=None):
     data_root = data_root or ROOT / 'sessions'
     recorder = recorder or Recorder(data_root)
+    transcription = transcription or TranscriptManager(data_root)
     token = secrets.token_urlsafe(32)
 
     @asynccontextmanager
@@ -39,7 +41,7 @@ def create_app(data_root: Path | None = None, recorder=None):
         yield
         recorder.stop()
 
-    app = FastAPI(title='AI Протоколист — запись аудио', version='0.2.0', lifespan=lifespan)
+    app = FastAPI(title='AI Протоколист — запись и транскрипция', version='0.3.0', lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', 'testserver'])
 
     @app.middleware('http')
@@ -65,8 +67,8 @@ def create_app(data_root: Path | None = None, recorder=None):
 
     @app.get('/api/status')
     def status():
-        return {'version': '0.2.0', 'csrf_token': token, 'recording': recorder.snapshot(),
-                'speech_recognition': False, 'teams_join': 'operator_managed'}
+        return {'version': '0.3.0', 'csrf_token': token, 'recording': recorder.snapshot(),
+                'speech_recognition': recognizer_available(), 'teams_join': 'operator_managed'}
 
     @app.get('/api/devices')
     def devices():
@@ -80,7 +82,10 @@ def create_app(data_root: Path | None = None, recorder=None):
         if not body.acknowledged:
             raise HTTPException(400, 'Подтвердите, что источник звука готов и участники уведомлены о записи.')
         try:
-            return recorder.start(device_id=body.device_id, title=body.title.strip() or 'Совещание', platform=body.platform)
+            transcription.ensure_idle()
+            result = recorder.start(device_id=body.device_id, title=body.title.strip() or 'Совещание', platform=body.platform)
+            transcription.start(result['id'])
+            return result
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
         except RuntimeError as exc:
@@ -88,7 +93,9 @@ def create_app(data_root: Path | None = None, recorder=None):
 
     @app.post('/api/recordings/stop')
     def stop():
-        return {'recording': recorder.stop()}
+        result = recorder.stop()
+        transcription.notify()
+        return {'recording': result}
 
     @app.post('/api/teams/open')
     def teams(body: TeamsRequest):
@@ -115,6 +122,18 @@ def create_app(data_root: Path | None = None, recorder=None):
         if not path.is_file():
             raise HTTPException(404, 'Метаданные сессии не найдены.')
         return json.loads(path.read_text(encoding='utf-8'))
+
+    @app.get('/api/sessions/{session_id}/transcript')
+    def transcript(session_id: str, after: int = Query(default=0, ge=0)):
+        session_path(session_id)
+        return transcription.read(session_id, after=after)
+
+    @app.get('/api/sessions/{session_id}/transcript.txt')
+    def transcript_file(session_id: str):
+        path = session_path(session_id) / 'transcript.txt'
+        if not path.is_file():
+            raise HTTPException(404, 'Транскрипт ещё не готов.')
+        return FileResponse(path, media_type='text/plain; charset=utf-8', filename='transcript.txt')
 
     @app.get('/api/sessions/{session_id}/files/{filename}')
     def audio(session_id: str, filename: str):

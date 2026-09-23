@@ -81,12 +81,20 @@ class FakeRecorder:
         return self.current
 
 
+class FakeTranscription:
+    def ensure_idle(self): pass
+    def start(self, session_id): pass
+    def notify(self): pass
+    def read(self, session_id, after=0):
+        return {'session_id': session_id, 'segments': [], 'next_cursor': 0, 'status': 'waiting'}
+
+
 class ApiTests(unittest.TestCase):
     def setUp(self):
         self.temp = TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.recorder = FakeRecorder()
-        self.client = TestClient(create_app(self.root, self.recorder))
+        self.client = TestClient(create_app(self.root, self.recorder, FakeTranscription()))
         self.token = self.client.get('/api/status').json()['csrf_token']
         self.headers = {'x-recorder-token': self.token}
 
