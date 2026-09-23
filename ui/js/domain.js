@@ -65,3 +65,20 @@ export function validateAudio(file,capabilities) {
   return null;
 }
 
+export function mergeServerMeeting(raw,previous) {
+  const m=normalizeResult({segments:raw.segments,summary:raw.analysis.summary,tasks:raw.analysis.tasks},{id:raw.id});
+  const segmentIds=new Map(m.segments.map((s,index)=>[s.id,raw.segments[index].id||s.id]));
+  for(const segment of m.segments)segment.id=segmentIds.get(segment.id);
+  const edits=previous?.taskEdits||{};
+  m.tasks=m.tasks.map((task,index)=>({...task,id:raw.analysis.tasks[index].id,
+    sourceId:segmentIds.get(task.sourceId)||null,...(edits[raw.analysis.tasks[index].id]||{})}));
+  for(const speaker of m.speakers)if(['speaker-unknown','unknown','Не определён'].includes(speaker.id))speaker.name='Говорящий не определён';
+  return {...m,title:raw.title,date:raw.created_at.slice(0,10),createdAt:raw.created_at,
+    status:raw.status,mode:raw.source==='audio_upload'?'audio':'live',serverId:raw.id,
+    audioUrl:raw.audio_url,duration:raw.duration_seconds,processedSeconds:raw.processed_seconds,
+    progress:raw.progress,snapshots:raw.analysis.snapshots,final:raw.analysis.final,
+    analysisRevision:raw.analysis.revision,platform:raw.platform,error:raw.error,warning:raw.warning,
+    transcriptionStatus:raw.transcription_status,recordingStatus:raw.recording_status,taskEdits:edits,
+    participants:raw.metadata?.participants||[],serverRevision:JSON.stringify(raw.revision)};
+}
+

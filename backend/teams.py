@@ -2,6 +2,7 @@
 from pathlib import Path
 import os
 import subprocess
+import re
 from urllib.parse import urlsplit
 
 
@@ -9,14 +10,21 @@ def validate_meeting_url(url: str) -> str:
     url = url.strip()
     try:
         parts = urlsplit(url)
-        allowed_host = parts.hostname in {'teams.microsoft.com', 'teams.live.com', 'teams.cloud.microsoft'}
-        allowed_path = parts.path.startswith(('/l/meetup-join/', '/meet/', '/v2/meet/', '/dl/launcher/'))
-        if (parts.scheme != 'https' or not allowed_host or not allowed_path or parts.username
+        host = parts.hostname or ''
+        teams = host in {'teams.microsoft.com', 'teams.live.com', 'teams.cloud.microsoft'} and parts.path.startswith(('/l/meetup-join/', '/meet/', '/v2/meet/', '/dl/launcher/'))
+        meet = host == 'meet.google.com' and bool(re.fullmatch(r'/[a-z]{3}-[a-z]{4}-[a-z]{3}/?', parts.path))
+        zoom = (host == 'zoom.us' or host.endswith('.zoom.us') or host == 'zoom.com' or host.endswith('.zoom.com')) and bool(re.match(r'^/(?:j/\d+|wc/\d+/join)', parts.path))
+        if (parts.scheme != 'https' or not (teams or meet or zoom) or parts.username
                 or parts.password or parts.port not in (None, 443) or any(ord(c) < 32 for c in url)):
             raise ValueError
     except ValueError:
-        raise ValueError('Нужна HTTPS-ссылка на встречу Teams: teams.microsoft.com, teams.live.com или teams.cloud.microsoft.') from None
+        raise ValueError('Нужна HTTPS-ссылка на встречу Teams, Google Meet или Zoom.') from None
     return url
+
+
+def meeting_platform(url: str) -> str:
+    host = urlsplit(validate_meeting_url(url)).hostname
+    return 'Google Meet' if host == 'meet.google.com' else 'Zoom' if 'zoom.' in host else 'Teams'
 
 
 def open_guest_window(url: str):

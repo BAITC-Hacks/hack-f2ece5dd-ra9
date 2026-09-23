@@ -11,6 +11,7 @@ import threading
 from typing import Callable
 
 from .recorder import save_json
+from .analysis import update_analysis
 
 TERMINAL_RECORDING_STATES = {'completed', 'error', 'interrupted'}
 SPEAKER_ID = re.compile(r'[A-Za-z0-9_-]{1,64}\Z')
@@ -180,8 +181,12 @@ class TranscriptManager:
                         state['status'] = 'waiting'
                         self._save(session_id, state)
                         self._publish_text(session_id, state['segments'])
+                    update_analysis(self.root / session_id, state['segments'],
+                                    float(chunk['start']) + float(chunk['duration']))
                     processed += 1
                 if metadata.get('status') in TERMINAL_RECORDING_STATES and processed == len(chunks):
+                    end = max((float(c['start']) + float(c['duration']) for c in chunks), default=0)
+                    update_analysis(self.root / session_id, state['segments'], end, final=True)
                     with self.lock:
                         state['status'] = 'completed' if metadata['status'] == 'completed' else metadata['status']
                         self._save(session_id, state)

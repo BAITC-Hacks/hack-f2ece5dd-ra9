@@ -204,11 +204,11 @@ def extract_action_items(payload: dict[str, Any] | list[dict[str, Any]]) -> list
     for segment in _merge_adjacent_segments(_read_segments(payload)):
         for sentence in _sentences(segment.text):
             owner, last_addressed = _extract_owner(sentence, last_addressed, segment.speaker)
-            if not ACTION_RE.search(sentence):
+            if not (ACTION_RE.search(sentence) or SELF_COMMITMENT_RE.search(sentence)) or ACK_RE.match(sentence):
                 continue
             deadline_match = DEADLINE_RE.search(sentence)
             title = _clean_title(sentence)
-            fingerprint = re.sub(r"[^\w]+", "", title.lower())
+            fingerprint = re.sub(r"[^\w]+", "", title.lower()) + '|' + str(owner) + '|' + (deadline_match.group(0) if deadline_match else '')
             if not title or fingerprint in seen:
                 continue
             seen.add(fingerprint)
