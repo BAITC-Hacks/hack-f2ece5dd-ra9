@@ -24,6 +24,7 @@ class AnalyzerTests(unittest.TestCase):
         result = analyse(self.payload)
         self.assertEqual(len(result["tasks"]), 2)
         self.assertEqual(result["tasks"][1]["title"], "проверь звук в Teams и Zoom")
+        self.assertEqual(result["tasks"][1]["deadline"], "до завтра")
 
     def test_does_not_invent_missing_fields(self) -> None:
         result = analyse({"segments": [{"speaker": "Спикер 1", "text": "Подготовить инструкцию запуска."}]})
@@ -31,6 +32,51 @@ class AnalyzerTests(unittest.TestCase):
         self.assertIsNone(task["responsible"])
         self.assertIsNone(task["deadline"])
         self.assertTrue(task["requires_review"])
+
+    def test_supports_kazakh_action_and_relative_deadline(self) -> None:
+        result = analyse(
+            {
+                "segments": [
+                    {
+                        "speaker": "Асхат Ерланович",
+                        "start": 60,
+                        "end": 70,
+                        "text": "Гульмира, есепті дайындаңыз, мерзімі ертеңге дейін, жауапты Гульмира Сериковна.",
+                    }
+                ]
+            }
+        )
+        task = result["tasks"][0]
+        self.assertIn("есепті дайындаңыз", task["title"])
+        self.assertEqual(task["responsible"], "Гульмира Сериковна")
+        self.assertEqual(task["deadline"], "ертеңге дейін")
+
+    def test_summary_ignores_short_acknowledgements(self) -> None:
+        result = analyse(
+            {
+                "segments": [
+                    {"speaker": "Спикер 1", "text": "Обсудили бюджет проекта."},
+                    {"speaker": "Спикер 2", "text": "Хорошо, проверю."},
+                ]
+            }
+        )
+        self.assertEqual(result["summary"]["key_points"], ["Обсудили бюджет проекта."])
+
+    def test_supports_mixed_russian_kazakh_action(self) -> None:
+        result = analyse(
+            {
+                "segments": [
+                    {
+                        "speaker": "Асхат Ерланович",
+                        "text": "Алия, подготовь есепті до завтра, жауапты Алия.",
+                    }
+                ]
+            }
+        )
+        task = result["tasks"][0]
+        self.assertIn("подготовь есепті", task["title"])
+        self.assertEqual(task["responsible"], "Алия")
+        self.assertEqual(task["deadline"], "до завтра")
 
 
 if __name__ == "__main__":

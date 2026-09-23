@@ -23,25 +23,34 @@ ACTION_RE = re.compile(
     r"направить|выставить|привлечь|сделать|дайындау|өткізу|келісу|тексеру|"
     r"жолдау|ұсыну|бекіту|подготовь|проверь|проведи|согласуй|организуй|"
     r"найди|предоставь|зафиксируй|доложи|обнови|разберись|запроси|направь|"
-    r"выставь|привлеки)\b",
+    r"выставь|привлеки|дайында\w*|жаса\w*|өткіз\w*|тексер\w*|келіс\w*|"
+    r"ұсын\w*|бекіт\w*|орында\w*|жібер\w*)\b",
     re.IGNORECASE,
 )
 DEADLINE_RE = re.compile(
-    r"\b(?:до|к|на|в течение)\s+(?:\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|"
+    r"\b(?:до|к|на|в течение)\s+(?:завтра|сегодня|\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|"
     r"сентября|октября|ноября|декабря)|конца\s+недели|пятницы|среды|четверга|"
     r"следующ(?:ей|ую)\s+недел[еи]|текущ(?:ей|ую)\s+недел[еи]|\d+\s+(?:дн(?:я|ей)|недел[ьи]))\b|"
-    r"\b(?:завтра|сегодня|на следующей неделе|на этой неделе|в течение\s+\w+\s+недель)\b",
+    r"\b(?:завтра|сегодня|на следующей неделе|на этой неделе|в течение\s+\w+\s+недель)\b|"
+    r"\b(?:ертеңге дейін|келесі аптада|осы аптада|жұмаға дейін|сәрсенбіге дейін|"
+    r"\d{1,2}\s+[А-Яа-яӘәІіҢңҒғҮүҰұҚқӨөҺһ-]+ға дейін)\b",
     re.IGNORECASE,
 )
 EXPLICIT_OWNER_RE = re.compile(
-    rf"(?:ответственн(?:ый|ая)|исполнитель)\s*[:—-]?\s*(?P<name>{PERSON_NAME}|юридический\s+департамент)",
+    rf"(?:ответственн(?:ый|ая)|исполнитель|жауапты|жауапкер)\s*[:—-]?\s*(?P<name>{PERSON_NAME}|юридический\s+департамент)",
     re.IGNORECASE,
 )
 # Names in the transcript are capitalized. Do not use IGNORECASE here: it
 # would mistake a normal phrase such as "стратегию закупа сырья," for a name.
 ADDRESSED_PERSON_RE = re.compile(rf"(?P<name>{PERSON_NAME}),\s*(?:вы\s+)?")
 SELF_COMMITMENT_RE = re.compile(
-    r"\b(сделаю|подготовлю|проведу|проверю|организую|дайындап|өткіземін|тексеремін)\b",
+    r"\b(сделаю|подготовлю|проведу|проверю|организую|дайындап|дайындаймын|"
+    r"өткіземін|тексеремін|жасаймын|келісемін)\b",
+    re.IGNORECASE,
+)
+ACK_RE = re.compile(
+    r"^\s*(?:хорошо\s*,\s*)?(?:принято|понял(?:а)?|сделаю|подготовлю|проверю|"
+    r"жақсы|түсіндім|орындаймын|дайындаймын)[.!…]?\s*$",
     re.IGNORECASE,
 )
 
@@ -117,7 +126,7 @@ def _clean_title(sentence: str) -> str:
         flags=re.IGNORECASE,
     )
     text = DEADLINE_RE.sub("", text)
-    text = re.sub(r"\b(?:срок|дедлайн)\b\s*[,.:;-]?", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b(?:срок|дедлайн|мерзімі)\b\s*[,.:;-]?", "", text, flags=re.IGNORECASE)
     text = re.sub(
         r",?\s*\d{1,2}\s+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\b",
         "",
@@ -173,7 +182,11 @@ def extract_action_items(payload: dict[str, Any] | list[dict[str, Any]]) -> list
 
 def build_summary(payload: dict[str, Any] | list[dict[str, Any]], tasks: list[ActionItem]) -> dict[str, Any]:
     segments = _read_segments(payload)
-    discussion = [segment.text for segment in segments if not ACTION_RE.search(segment.text)]
+    discussion = [
+        segment.text
+        for segment in segments
+        if not ACTION_RE.search(segment.text) and not ACK_RE.match(segment.text)
+    ]
     key_points = discussion[:3]
     if not key_points:
         key_points = [task.title for task in tasks[:3]]
