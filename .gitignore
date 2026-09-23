@@ -1,0 +1,28 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python and development tools
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+node_modules/
+.vscode/
+.idea/
+
+# Generated meetings, models and temporary output
+sessions/
+recordings/
+models/
+work/
+*.log
+
+# OS files
+Thumbs.db
+.DS_Store
